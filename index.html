@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course Swap - Stellar Soroban Demo</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stellar-sdk/12.3.0/stellar-sdk.js"></script>
+  <style>
+    :root { --bg: #0f172a; --card: #1e293b; --primary: #6366f1; --text: #f8fafc; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; line-height: 1.5; }
+    .container { max-width: 900px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #334155; padding-bottom: 20px; }
+    .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #334155; }
+    h1, h2 { margin: 0 0 15px 0; }
+    button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: opacity 0.2s; }
+    button:hover { opacity: 0.9; }
+    button:disabled { background: #64748b; cursor: not-allowed; }
+    input { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .swap-item { border-bottom: 1px solid #334155; padding: 15px 0; display: flex; justify-content: space-between; align-items: center; }
+    .swap-item:last-child { border-bottom: none; }
+    .tag { font-size: 0.8rem; background: #334155; padding: 2px 8px; border-radius: 4px; margin-right: 5px; }
+    .status { font-size: 0.9rem; margin-top: 10px; color: #94a3b8; }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎓 Course Swap</h1>
+      <div>
+        <span id="walletAddr" style="font-family: monospace; margin-right: 15px; color: #94a3b8;"></span>
+        <button id="connectBtn">Connect Wallet</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Form Đăng tin -->
+      <section class="card">
+        <h2>Post New Swap</h2>
+        <p style="font-size: 0.9rem; color: #94a3b8;">What course do you have and what do you want?</p>
+
+        <label>Your Course (Offered)</label>
+        <input type="text" id="offeredId" placeholder="ID: CS101">
+        <input type="text" id="offeredName" placeholder="Name: Rust Programming">
+        <input type="text" id="offeredClass" placeholder="Class: L01">
+
+        <label>Desired Course (Wanted)</label>
+        <input type="text" id="wantedId" placeholder="ID: MATH202">
+        <input type="text" id="wantedName" placeholder="Name: Calculus II">
+        <input type="text" id="wantedClass" placeholder="Class: L05">
+
+        <button id="postBtn" style="width: 100%;">Post Request</button>
+        <div id="postStatus" class="status"></div>
+      </section>
+
+      <!-- Bảng tin ẩn danh -->
+      <section class="card">
+        <h2>Available Swaps</h2>
+        <button id="refreshBtn" style="background: #334155; margin-bottom: 15px;">Refresh Board</button>
+        <div id="swapBoard">
+          <p style="color: #94a3b8;">Connect wallet to see swaps.</p>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module">
+    import { isConnected, getAddress, signTransaction, setAllowed } from 'https://esm.sh/@stellar/freighter-api';
+
+    const CONTRACT_ID = 'CAT2HAZFNSCNCG4OGII7GX4SELLGIW2NMDCLPCNCNKCMZWOJR76J3SSZ';
+    const RPC_URL = 'https://soroban-testnet.stellar.org';
+    const NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
+
+    let userAddress = '';
+
+    const connectBtn = document.getElementById('connectBtn');
+    const walletAddr = document.getElementById('walletAddr');
+    const swapBoard = document.getElementById('swapBoard');
+    const postBtn = document.getElementById('postBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+
+    connectBtn.onclick = async () => {
+      try {
+        if (await isConnected()) {
+          await setAllowed();
+          const { address } = await getAddress();
+          userAddress = address;
+          walletAddr.innerText = `${address.slice(0, 6)}...${address.slice(-4)}`;
+          connectBtn.innerText = 'Connected';
+          loadSwaps();
+        } else {
+          alert('Please install Freighter extension');
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    async function loadSwaps() {
+      swapBoard.innerHTML = '<p>Fetching data...</p>';
+      try {
+        const server = new StellarSdk.SorobanRpc.Server(RPC_URL);
+        const contract = new StellarSdk.Contract(CONTRACT_ID);
+
+        // Use a generic source account for simulation
+        const tx = new StellarSdk.TransactionBuilder(
+          new StellarSdk.Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0'),
+          { fee: '100', networkPassphrase: NETWORK_PASSPHRASE }
+        )
+        .addOperation(contract.call('get_available_swaps'))
+        .setTimeout(30)
+        .build();
+
+        const result = await server.simulateTransaction(tx);
+        const swaps = StellarSdk.scValToNative(result.result.retval);
+
+        if (!swaps || swaps.length === 0) {
+          swapBoard.innerHTML = '<p>No active swaps found.</p>';
+          return;
+        }
+
+        swapBoard.innerHTML = swaps.map(s => `
+          <div class="swap-item">
+            <div>
+              <strong>${s.offered_course.course_id}</strong> (${s.offered_course.class_id})
+              <div style="font-size: 0.8rem; color: #94a3b8;">⇄ Wants: ${s.wanted_course.course_id}</div>
+            </div>
+            <button onclick="alert('Execute swap logic for ID: ${s.id}')" style="padding: 5px 10px; font-size: 0.8rem;">Swap Now</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        swapBoard.innerHTML = '<p class="error">Error: ' + err.message + '</p>';
+      }
+    }
+
+    refreshBtn.onclick = loadSwaps;
+
+    postBtn.onclick = async () => {
+      if (!userAddress) return alert('Connect wallet first');
+      const status = document.getElementById('postStatus');
+      status.innerText = 'Preparing...';
+
+      try {
+        const server = new StellarSdk.SorobanRpc.Server(RPC_URL);
+        const contract = new StellarSdk.Contract(CONTRACT_ID);
+        const account = await server.getAccount(userAddress);
+
+        const offered = {
+          course_id: document.getElementById('offeredId').value,
+          course_name: document.getElementById('offeredName').value,
+          class_id: document.getElementById('offeredClass').value,
+          time_slot: 'TBA'
+        };
+        const wanted = {
+          course_id: document.getElementById('wantedId').value,
+          course_name: document.getElementById('wantedName').value,
+          class_id: document.getElementById('wantedClass').value,
+          time_slot: 'TBA'
+        };
+
+        const tx = new StellarSdk.TransactionBuilder(account, { fee: '1000', networkPassphrase: NETWORK_PASSPHRASE })
+          .addOperation(contract.call('post_request',
+            new StellarSdk.Address(userAddress).toScVal(),
+            StellarSdk.nativeToScVal(offered, { type: { course_id: 'string', course_name: 'string', class_id: 'string', time_slot: 'string' } }),
+            StellarSdk.nativeToScVal(wanted, { type: { course_id: 'string', course_name: 'string', class_id: 'string', time_slot: 'string' } })
+          ))
+          .setTimeout(30)
+          .build();
+
+        const prepared = await server.prepareTransaction(tx);
+        const { signedTxXdr } = await signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE });
+        const response = await server.sendTransaction(StellarSdk.TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE));
+
+        status.innerHTML = `<span class="success">Posted! Hash: ${response.hash.slice(0,8)}</span>`;
+        setTimeout(loadSwaps, 2000);
+      } catch (err) {
+        status.innerHTML = `<span class="error">Error: ${err.message}</span>`;
+      }
+    };
+  </script>
+</body>
+</html>
