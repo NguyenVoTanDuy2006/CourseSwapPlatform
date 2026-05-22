@@ -18,7 +18,7 @@ University students who need to adjust their class schedules, swap sections, or 
 - **Transaction**: [View on Stellar Expert](https://stellar.expert/explorer/testnet/tx/420e32cfa14bfd383364f54f1f9872d1f08ffe37aa638b160790be85baf6e3f3)
 
 ## How to Run
-1. **Clone**: `git clone https://github.com/yourname/course-swap.git`
+1. **Clone**: `git clone https://github.com/NguyenVoTanDuy2006/CourseSwapPlatform`
 2. **Build**: 
    ```bash
    cd project/contracts/course-swap
